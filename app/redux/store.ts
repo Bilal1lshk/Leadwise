@@ -4,6 +4,7 @@ import tasksSlice from "./tasks";
 import organizationSlice from "./organization";
 import authSlice from "./auth";
 import notificationReducer from "./notifications";
+import emailClientsReducer from "./emailClients";
 
 export const store = configureStore({
   reducer: {
@@ -13,9 +14,11 @@ export const store = configureStore({
     auth: authSlice,
     notifications: notificationReducer,
     notificationSlice: notificationReducer,
+    emailClients: emailClientsReducer,
   },
 });
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 export default store;
+
