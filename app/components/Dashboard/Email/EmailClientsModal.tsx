@@ -1,356 +1,368 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
   X,
-  Send,
+  Server,
+  Plus,
+  Star,
+  Trash2,
+  Pencil,
   Mail,
-  ChevronDown,
-  Paperclip,
-  AlertCircle,
   CheckCircle2,
-  Loader2,
 } from "lucide-react";
-import { useAppSelector } from "@/app/redux/hooks";
+import { useAppDispatch, useAppSelector } from "@/app/redux/hooks";
+import {
+  addEmailClient,
+  closeClientModal,
+  deleteEmailClient,
+  GmailAccount,
+  setDefaultClient,
+  updateEmailClient,
+} from "@/app/redux/emailClients";
 
-interface SendEmailModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  /** Optional prefilled recipient, e.g. when emailing a specific lead */
-  defaultTo?: string;
-  defaultSubject?: string;
-}
+const EMPTY_FORM = {
+  name: "",
+  email: "",
+  appPassword: "",
+  replyTo: "",
+  signature: "",
+  isDefault: false,
+};
 
-export default function SendEmailModal({
-  isOpen,
-  onClose,
-  defaultTo = "",
-  defaultSubject = "",
-}: SendEmailModalProps) {
-  const { clients } = useAppSelector((state) => state.emailClients);
+export default function EmailClientsModal() {
+  const dispatch = useAppDispatch();
+  const { isClientModalOpen, clients } = useAppSelector((state) => state.emailClients);
 
-  const defaultClientId = useMemo(
-    () => clients.find((c) => c.isDefault)?.id || clients[0]?.id || "",
-    [clients]
-  );
+  const [mounted, setMounted] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  const [fromClientId, setFromClientId] = useState(defaultClientId);
-  const [to, setTo] = useState(defaultTo);
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [showCcBcc, setShowCcBcc] = useState(false);
-  const [subject, setSubject] = useState(defaultSubject);
-  const [body, setBody] = useState("");
-  const [appendSignature, setAppendSignature] = useState(true);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(
-    null
-  );
+  useEffect(() => {
+    if (!isClientModalOpen) {
+      setShowForm(false);
+      setEditingId(null);
+      setForm(EMPTY_FORM);
+    }
+  }, [isClientModalOpen]);
 
-  const selectedClient = clients.find((c) => c.id === fromClientId);
+  if (!mounted || !isClientModalOpen) return null;
 
-  if (!isOpen) return null;
+  const handleClose = () => dispatch(closeClientModal());
 
-  const resetAndClose = () => {
-    setTo(defaultTo);
-    setCc("");
-    setBcc("");
-    setShowCcBcc(false);
-    setSubject(defaultSubject);
-    setBody("");
-    setResult(null);
-    onClose();
+  const startAdd = () => {
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM, isDefault: clients.length === 0 });
+    setShowForm(true);
   };
 
-  const handleSend = async (e: React.FormEvent) => {
+  const startEdit = (client: GmailAccount) => {
+    setEditingId(client.id);
+    setForm({
+      name: client.name,
+      email: client.email,
+      appPassword: client.appPassword || "",
+      replyTo: client.replyTo || "",
+      signature: client.signature || "",
+      isDefault: client.isDefault,
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Sending email...");
-  
-    setResult(null);
 
-    if (!selectedClient) {
-      setResult({ success: false, message: "Select a Gmail account to send from." });
-      return;
+    if (!form.name.trim() || !form.email.trim()) return;
+
+    const payload = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      appPassword: form.appPassword.trim() || undefined,
+      replyTo: form.replyTo.trim() || undefined,
+      signature: form.signature.trim() || undefined,
+      isDefault: form.isDefault,
+      status: "connected" as const,
+    };
+
+    if (editingId) {
+      const existing = clients.find((c) => c.id === editingId);
+      if (!existing) return;
+
+      dispatch(
+        updateEmailClient({
+          ...existing,
+          ...payload,
+        })
+      );
+    } else {
+      dispatch(addEmailClient(payload));
     }
-    if (!selectedClient.appPassword) {
-      setResult({
-        success: false,
-        message: `No App Password saved for ${selectedClient.email}. Edit the account and add one first.`,
-      });
-      return;
-    }
-    if (!to.trim() || !subject.trim() || !body.trim()) {
-      setResult({ success: false, message: "To, subject, and body are all required." });
-      return;
-    }
 
-    setSending(true);
-
-    // Turn plain-text body into simple HTML (preserve line breaks)
-    const bodyHtml = body.trim().replace(/\n/g, "<br/>");
-    const signatureHtml = selectedClient.signature
-      ? selectedClient.signature.trim().replace(/\n/g, "<br/>")
-      : "";
-    const html =
-      appendSignature && signatureHtml
-        ? `${bodyHtml}<br/><br/>${signatureHtml}`
-        : bodyHtml;
-
-    try {
-      const res = await fetch("/api/email/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          smtp: {
-            host: selectedClient.smtpHost,
-            port: selectedClient.smtpPort,
-            secure: selectedClient.smtpSecure,
-            user: selectedClient.email,
-            pass: selectedClient.appPassword,
-          },
-          from: {
-            name: selectedClient.name,
-            email: selectedClient.email,
-          },
-          replyTo: selectedClient.replyTo,
-          to,
-          cc: cc || undefined,
-          bcc: bcc || undefined,
-          subject,
-          html,
-          text: body,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to send email.");
-      }
-
-      setResult({ success: true, message: `Email sent to ${to}.` });
-      setTo(defaultTo);
-      setCc("");
-      setBcc("");
-      setSubject(defaultSubject);
-      setBody("");
-    } catch (err: any) {
-      setResult({ success: false, message: err.message || "Something went wrong." });
-    } finally {
-      setSending(false);
-    }
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/40 backdrop-blur-sm overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-5 bg-black/40 backdrop-blur-sm overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.2 }}
-        className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl border border-[#E5CB90] bg-white text-[#22303A] shadow-xl overflow-hidden"
+        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-[#E5CB90] bg-white text-[#22303A] shadow-xl overflow-hidden"
       >
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-[#E5CB90]/70 px-6 py-4 bg-[#FFF3C8]/40">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#458393]/10 border border-[#458393]/20 text-[#458393]">
-              <Send size={18} />
+              <Server size={18} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[#22303A]">Compose Email</h2>
-              <p className="text-xs text-[#5C6D71]">Send directly from your connected Gmail account</p>
+              <h2 className="text-lg font-semibold text-[#22303A]">SMTP Accounts</h2>
+              <p className="text-xs text-[#5C6D71]">
+                Manage Gmail / Google Workspace senders for outreach
+              </p>
             </div>
           </div>
           <button
-            onClick={resetAndClose}
+            type="button"
+            onClick={handleClose}
             className="rounded-lg p-2 text-[#5C6D71] hover:bg-[#FFF3C8] hover:text-[#22303A] transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSend} className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#FAFAF7]">
-          {clients.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[#E5CB90] p-6 text-center bg-white">
-              <Mail size={28} className="mx-auto text-[#9A9A8F] mb-2" />
-              <p className="text-sm font-semibold text-[#22303A]">No Gmail accounts connected</p>
-              <p className="text-xs text-[#5C6D71] mt-1">
-                Add a Gmail account first before composing an email.
-              </p>
-            </div>
-          ) : (
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#FAFAF7]">
+          {!showForm ? (
             <>
-              {/* From */}
-              <div className="bg-white p-4 rounded-2xl border border-[#E5CB90]/70 space-y-3.5">
-                <div>
-                  <label className="block text-xs font-semibold text-[#22303A] mb-1">
-                    Send From
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={fromClientId}
-                      onChange={(e) => setFromClientId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 pr-8 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
-                    >
-                      {clients.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.email}){c.isDefault ? " — Default" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      size={14}
-                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A8F]"
-                    />
-                  </div>
-                </div>
-
-                {/* To */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-[#22303A]">
-                      To <span className="text-red-500">*</span>
-                    </label>
-                    {!showCcBcc && (
-                      <button
-                        type="button"
-                        onClick={() => setShowCcBcc(true)}
-                        className="text-[11px] font-medium text-[#458393] hover:text-[#346a78]"
-                      >
-                        Add Cc/Bcc
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    placeholder="lead@example.com, another@example.com"
-                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white placeholder:text-[#9A9A8F]"
-                  />
-                </div>
-
-                {showCcBcc && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#22303A] mb-1">Cc</label>
-                      <input
-                        type="text"
-                        value={cc}
-                        onChange={(e) => setCc(e.target.value)}
-                        placeholder="Optional"
-                        className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white placeholder:text-[#9A9A8F]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#22303A] mb-1">Bcc</label>
-                      <input
-                        type="text"
-                        value={bcc}
-                        onChange={(e) => setBcc(e.target.value)}
-                        placeholder="Optional"
-                        className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white placeholder:text-[#9A9A8F]"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Subject */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#22303A] mb-1">
-                    Subject <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="e.g., Following up on your inquiry"
-                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white placeholder:text-[#9A9A8F]"
-                  />
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="bg-white p-4 rounded-2xl border border-[#E5CB90]/70">
-                <label className="block text-xs font-semibold text-[#22303A] mb-1">
-                  Message <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={8}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="Write your message..."
-                  className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] p-3 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
-                />
-
-                {selectedClient?.signature && (
-                  <label className="mt-2 flex items-center gap-2 text-[11px] text-[#5C6D71]">
-                    <input
-                      type="checkbox"
-                      checked={appendSignature}
-                      onChange={(e) => setAppendSignature(e.target.checked)}
-                      className="h-3.5 w-3.5 accent-[#458393] cursor-pointer"
-                    />
-                    Append default signature
-                  </label>
-                )}
-              </div>
-
-              {/* Attachment placeholder (not wired to backend yet) */}
-              <div className="flex items-center gap-2 rounded-xl bg-white border border-dashed border-[#E5CB90]/70 px-4 py-2.5 text-[11px] text-[#9A9A8F]">
-                <Paperclip size={13} />
-                <span>Attachments aren&apos;t supported yet</span>
-              </div>
-
-              {/* Result */}
-              {result && (
-                <div
-                  className={`flex items-start gap-2.5 rounded-xl border p-3 text-xs ${
-                    result.success
-                      ? "border-[#3C8F6B]/30 bg-[#3C8F6B]/10 text-[#246147]"
-                      : "border-[#C1523F]/30 bg-[#C1523F]/10 text-[#C1523F]"
-                  }`}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[#5C6D71]">
+                  {clients.length} account{clients.length !== 1 ? "s" : ""} configured
+                </p>
+                <button
+                  type="button"
+                  onClick={startAdd}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#458393] px-4 py-2 text-xs font-semibold text-white shadow hover:bg-[#346a78] transition"
                 >
-                  {result.success ? (
-                    <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-[#3C8F6B]" />
-                  ) : (
-                    <AlertCircle size={16} className="shrink-0 mt-0.5 text-[#C1523F]" />
-                  )}
-                  <span className="font-medium">{result.message}</span>
+                  <Plus size={14} />
+                  Add Account
+                </button>
+              </div>
+
+              {clients.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[#E5CB90] p-8 text-center bg-white">
+                  <Mail size={28} className="mx-auto text-[#9A9A8F] mb-2" />
+                  <p className="text-sm font-semibold text-[#22303A]">No SMTP accounts yet</p>
+                  <p className="text-xs text-[#5C6D71] mt-1 mb-4">
+                    Add a Gmail account with an App Password to start sending emails.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={startAdd}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#458393] px-4 py-2 text-xs font-semibold text-white hover:bg-[#346a78]"
+                  >
+                    <Plus size={14} />
+                    Add Your First Account
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {clients.map((client) => (
+                    <div
+                      key={client.id}
+                      className="rounded-2xl border border-[#E5CB90]/70 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-sm font-semibold text-[#22303A]">{client.name}</h3>
+                            {client.isDefault && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF3C8] border border-[#E5CB90] px-2 py-0.5 text-[10px] font-semibold text-[#458393]">
+                                <Star size={10} className="fill-current" />
+                                Default
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#3C8F6B]">
+                              <CheckCircle2 size={11} />
+                              {client.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#458393] font-mono mt-0.5">{client.email}</p>
+                          {client.replyTo && (
+                            <p className="text-[11px] text-[#5C6D71] mt-1">
+                              Reply-To: {client.replyTo}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!client.isDefault && (
+                            <button
+                              type="button"
+                              onClick={() => dispatch(setDefaultClient(client.id))}
+                              className="rounded-lg p-2 text-[#5C6D71] hover:bg-[#FFF3C8] hover:text-[#458393] transition"
+                              title="Set as default"
+                            >
+                              <Star size={15} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => startEdit(client)}
+                            className="rounded-lg p-2 text-[#5C6D71] hover:bg-[#FFF3C8] hover:text-[#22303A] transition"
+                            title="Edit account"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => dispatch(deleteEmailClient(client.id))}
+                            className="rounded-lg p-2 text-[#5C6D71] hover:bg-[#C1523F]/10 hover:text-[#C1523F] transition"
+                            title="Delete account"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
-          )}
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[#22303A]">
+                  {editingId ? "Edit SMTP Account" : "Add SMTP Account"}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingId(null);
+                    setForm(EMPTY_FORM);
+                  }}
+                  className="text-xs font-medium text-[#5C6D71] hover:text-[#22303A]"
+                >
+                  Back to list
+                </button>
+              </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5CB90]/70">
+              <div className="rounded-2xl border border-[#E5CB90]/70 bg-white p-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#22303A] mb-1">
+                    Display Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Alex Turner (Sales)"
+                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#22303A] mb-1">
+                    Gmail Address <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={form.email}
+                    onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="sales@yourcompany.com"
+                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#22303A] mb-1">
+                    Google App Password
+                  </label>
+                  <input
+                    type="password"
+                    value={form.appPassword}
+                    onChange={(e) => setForm((prev) => ({ ...prev, appPassword: e.target.value }))}
+                    placeholder="16-character app password"
+                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#22303A] mb-1">Reply-To</label>
+                  <input
+                    type="email"
+                    value={form.replyTo}
+                    onChange={(e) => setForm((prev) => ({ ...prev, replyTo: e.target.value }))}
+                    placeholder="support@yourcompany.com"
+                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3 py-2 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#22303A] mb-1">Signature</label>
+                  <textarea
+                    rows={4}
+                    value={form.signature}
+                    onChange={(e) => setForm((prev) => ({ ...prev, signature: e.target.value }))}
+                    placeholder="--&#10;Best regards,&#10;Your Name"
+                    className="w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] p-3 text-xs text-[#22303A] outline-none focus:border-[#458393] focus:bg-white resize-y"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-[#5C6D71]">
+                  <input
+                    type="checkbox"
+                    checked={form.isDefault}
+                    onChange={(e) => setForm((prev) => ({ ...prev, isDefault: e.target.checked }))}
+                    className="h-3.5 w-3.5 accent-[#458393] cursor-pointer"
+                  />
+                  Set as default sender
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5CB90]/70">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="rounded-xl border border-[#E5E5E0] bg-white px-4 py-2 text-xs font-medium text-[#5C6D71] hover:bg-[#F7F7F2] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#458393] px-5 py-2 text-xs font-semibold text-white shadow hover:bg-[#346a78] transition"
+                >
+                  {editingId ? "Save Changes" : "Add Account"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {!showForm && (
+          <div className="flex items-center justify-end border-t border-[#E5CB90]/70 px-6 py-4 bg-white">
             <button
               type="button"
-              onClick={resetAndClose}
+              onClick={handleClose}
               className="rounded-xl border border-[#E5E5E0] bg-white px-4 py-2 text-xs font-medium text-[#5C6D71] hover:bg-[#F7F7F2] transition"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={sending || clients.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#458393] px-5 py-2 text-xs font-semibold text-white shadow hover:bg-[#346a78] transition active:scale-95 disabled:opacity-50"
-            >
-              {sending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Send size={14} />
-              )}
-              {sending ? "Sending..." : "Send Email"}
+              Close
             </button>
           </div>
-        </form>
+        )}
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

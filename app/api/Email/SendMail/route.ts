@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-
+    console.log(email)
     if (!email) {
       return NextResponse.json(
         { success: false, message: "Email is required." },

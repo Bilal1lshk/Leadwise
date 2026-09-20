@@ -36,6 +36,7 @@ function isValidEmail(value: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("request hitted")
   let body: SendEmailPayload;
 
   try {

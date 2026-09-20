@@ -4,10 +4,10 @@ export interface GmailAccount {
   id: string;
   name: string; // e.g., "Alex Turner (Sales)"
   email: string; // e.g., "alex@gmail.com" or "alex@company.com"
-  appPassword?: string; // 16-character Google App Password
+  appPassword?: string; 
   replyTo?: string;
-  smtpHost: string; // Fixed: "smtp.gmail.com"
-  smtpPort: number; // Fixed: 465 (SSL) / 587 (TLS)
+  smtpHost: string; 
+  smtpPort: number; 
   smtpSecure: boolean;
   isDefault: boolean;
   signature?: string;
@@ -47,6 +47,13 @@ export interface SentEmailLog {
   sentAt: string;
 }
 
+export interface ComposerLead {
+  id: string;
+  personId: string;
+  email: string;
+  estimatedValue?: number;
+}
+
 interface EmailClientsState {
   clients: GmailAccount[];
   templates: EmailTemplate[];
@@ -54,13 +61,7 @@ interface EmailClientsState {
   selectedClientId: string | null;
   isClientModalOpen: boolean;
   isComposerOpen: boolean;
-  composerPreselectedLeads: Array<{
-    id: string;
-    personId: string;
-    email: string;
-    company?: string;
-    estimatedValue?: number;
-  }>;
+  composerLeads: ComposerLead[];
 }
 
 const DEFAULT_GMAIL_ACCOUNTS: GmailAccount[] = [
@@ -184,7 +185,7 @@ const initialState: EmailClientsState = {
   selectedClientId: defaultActiveClient,
   isClientModalOpen: false,
   isComposerOpen: false,
-  composerPreselectedLeads: [],
+  composerLeads: [],
 };
 
 const emailClientsSlice = createSlice({
@@ -260,25 +261,14 @@ const emailClientsSlice = createSlice({
       state.isClientModalOpen = false;
     },
 
-    openComposer: (
-      state,
-      action: PayloadAction<
-        Array<{
-          id: string;
-          personId: string;
-          email: string;
-          company?: string;
-          estimatedValue?: number;
-        }>
-      >
-    ) => {
-      state.composerPreselectedLeads = action.payload;
+    openComposer: (state, action: PayloadAction<ComposerLead[]>) => {
+      state.composerLeads = action.payload;
       state.isComposerOpen = true;
     },
 
     closeComposer: (state) => {
       state.isComposerOpen = false;
-      state.composerPreselectedLeads = [];
+      state.composerLeads = [];
     },
 
     saveTemplate: (state, action: PayloadAction<Omit<EmailTemplate, "id">>) => {

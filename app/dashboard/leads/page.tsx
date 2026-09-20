@@ -28,7 +28,7 @@ import { useAppDispatch } from "@/app/redux/hooks";
 import { setAllLeads } from "@/app/redux/leads";
 import { openComposer, openClientModal } from "@/app/redux/emailClients";
 import EmailComposerModal from "@/app/components/Dashboard/Email/EmailComposerModal";
-import EmailClientsModal from "@/app/components/Dashboard/Email/EmailClientsModal";
+import  EmailClientsModal from "@/app/components/Dashboard/Email/EmailClientsModal";
 
 /* =========================================================
    TYPES
