@@ -19,11 +19,17 @@ import {
     ChevronDown,
     Check,
     X,
+    Mail,
     type LucideIcon,
 } from "lucide-react";
 import axios from "axios";
 import { useAppDispatch } from "@/app/redux/hooks";
 import { addNotification } from "@/app/redux/notifications";
+import { openComposer, openClientModal } from "@/app/redux/emailClients";
+import EmailComposerModal from "@/app/components/Dashboard/Email/EmailComposerModal";
+import EmailClientsModal from "@/app/components/Dashboard/Email/EmailClientsModal";
+import EmailHistoryTab from "@/app/components/Dashboard/Email/EmailHistoryTab";
+
 
 type LeadSource = "website" | "referral" | "ad" | "cold_call" | "other";
 type LeadPriority = "low" | "medium" | "high";
@@ -262,6 +268,38 @@ export default function LeadDetailPage() {
                             Lead details
                         </p>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => dispatch(openClientModal())}
+                            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#458393] bg-white border border-[#E5CB90]/60 hover:bg-[#FFF3C8]/40 transition-colors shadow-sm"
+                            title="Manage sending email clients"
+                        >
+                            <Mail size={13} />
+                            Clients
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() =>
+                                dispatch(
+                                    openComposer([
+                                        {
+                                            id: lead._id,
+                                            personId: lead.personId || lead.name,
+                                            email: lead.email,
+                                            estimatedValue: lead.estimatedValue,
+                                        },
+                                    ])
+                                )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-[#458393] hover:bg-[#346a78] transition-colors shadow-sm active:scale-95"
+                        >
+                            <Mail size={13} />
+                            Send Email
+                        </button>
+                    </div>
                 </motion.div>
 
                 {/* Main card */}
@@ -450,7 +488,26 @@ export default function LeadDetailPage() {
                     )}
 
                     {/* Actions */}
-                    <div className="flex items-center justify-end gap-2 mt-6 pt-5 border-t border-[#E5E5E0]">
+                    <div className="flex items-center justify-between gap-2 mt-6 pt-5 border-t border-[#E5E5E0]">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                dispatch(
+                                    openComposer([
+                                        {
+                                            id: lead._id,
+                                            personId: lead.personId || lead.name,
+                                            email: lead.email,
+                                            estimatedValue: lead.estimatedValue,
+                                        },
+                                    ])
+                                )
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#458393] hover:bg-[#346a78] transition-colors shadow-sm active:scale-95"
+                        >
+                            <Mail size={15} />
+                            Compose Email
+                        </button>
 
                         {!confirmDelete ? (
                             <button
@@ -496,7 +553,26 @@ export default function LeadDetailPage() {
                         )}
                     </div>
                 </motion.div>
+
+                {/* Email Communication History */}
+                <motion.div
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: 0.1 }}
+                    className="mt-6"
+                >
+                    <EmailHistoryTab
+                        leadId={lead._id}
+                        leadEmail={lead.email}
+                        leadName={lead.personId || lead.name}
+                        estimatedValue={lead.estimatedValue}
+                    />
+                </motion.div>
             </div>
+
+            {/* Email Modals */}
+            <EmailComposerModal />
+            <EmailClientsModal />
         </div>
     );
 }

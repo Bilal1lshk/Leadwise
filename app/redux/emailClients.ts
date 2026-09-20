@@ -1,21 +1,16 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-export type EmailProviderType = "smtp" | "gmail" | "outlook" | "api";
-
-export interface EmailClient {
+export interface GmailAccount {
   id: string;
-  name: string; // e.g., "Sales Outreach" or "Alex Turner"
-  email: string; // e.g., "alex@mycompany.com"
+  name: string; // e.g., "Alex Turner (Sales)"
+  email: string; // e.g., "alex@gmail.com" or "alex@company.com"
+  appPassword?: string; // 16-character Google App Password
   replyTo?: string;
-  provider: EmailProviderType;
+  smtpHost: string; // Fixed: "smtp.gmail.com"
+  smtpPort: number; // Fixed: 465 (SSL) / 587 (TLS)
+  smtpSecure: boolean;
   isDefault: boolean;
   signature?: string;
-  // SMTP specific details
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpSecure?: boolean;
-  username?: string;
-  // Status
   status: "connected" | "disconnected" | "error";
   lastVerifiedAt?: string;
   createdAt: string;
@@ -53,7 +48,7 @@ export interface SentEmailLog {
 }
 
 interface EmailClientsState {
-  clients: EmailClient[];
+  clients: GmailAccount[];
   templates: EmailTemplate[];
   sentLogs: SentEmailLog[];
   selectedClientId: string | null;
@@ -68,33 +63,21 @@ interface EmailClientsState {
   }>;
 }
 
-const DEFAULT_CLIENTS: EmailClient[] = [
+const DEFAULT_GMAIL_ACCOUNTS: GmailAccount[] = [
   {
-    id: "client-default-1",
-    name: "Primary Sales (Google Workspace)",
+    id: "gmail-default-1",
+    name: "Primary Gmail (Google Workspace)",
     email: "sales@yourcompany.com",
     replyTo: "support@yourcompany.com",
-    provider: "gmail",
+    appPassword: "•••• •••• •••• ••••",
+    smtpHost: "smtp.gmail.com",
+    smtpPort: 465,
+    smtpSecure: true,
     isDefault: true,
-    signature: "--\nBest regards,\nSales Team\nLeadWise CRM | leadwise.io",
+    signature: "--\nBest regards,\nSales Outreach Team\nLeadWise CRM | contact@leadwise.io",
     status: "connected",
     lastVerifiedAt: new Date().toISOString(),
     createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-  },
-  {
-    id: "client-default-2",
-    name: "Executive Outreach (Custom SMTP)",
-    email: "founder@yourcompany.com",
-    provider: "smtp",
-    smtpHost: "mail.yourcompany.com",
-    smtpPort: 587,
-    smtpSecure: true,
-    username: "founder@yourcompany.com",
-    isDefault: false,
-    signature: "--\nWarm regards,\nFounder & CEO\nSchedule a call: cal.com/leadwise",
-    status: "connected",
-    lastVerifiedAt: new Date().toISOString(),
-    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
   },
 ];
 
@@ -103,10 +86,10 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     id: "tpl-1",
     name: "👋 Initial Introduction & Discovery",
     category: "outreach",
-    subject: "Quick question regarding {{lead_name}}'s pipeline strategy",
+    subject: "Quick question regarding {{lead_name}}'s sales workflow",
     body: `Hi {{lead_name}},
 
-I noticed you're leading growth initiatives and wanted to reach out. We help companies streamline their sales pipelines, boost team conversion rates, and automate follow-ups.
+I noticed you're exploring sales growth initiatives and wanted to reach out. We help teams streamline their leads, automate follow-ups, and increase conversion rates.
 
 Would you be open to a brief 10-minute chat this Thursday to see how we could assist your team?
 
@@ -120,9 +103,9 @@ Best regards,
     subject: "Resources & next steps for {{lead_name}}",
     body: `Hi {{lead_name}},
 
-Great speaking with you recently! As promised, here are the key highlights and solutions we discussed tailored to your estimated opportunity value of {{estimated_value}}.
+Great speaking with you recently! As promised, here are the key highlights tailored to your estimated opportunity value of {{estimated_value}}.
 
-Please let me know if you have questions or if you'd like to schedule our technical deep-dive next week.
+Please let me know if you have questions or if you'd like to schedule our next technical call.
 
 Best,
 {{sender_name}}`,
@@ -157,7 +140,6 @@ Best,
   },
 ];
 
-// Helper to safely access localStorage on client-side
 const loadStorage = <T>(key: string, fallback: T): T => {
   if (typeof window === "undefined") return fallback;
   try {
@@ -175,7 +157,7 @@ const saveStorage = <T>(key: string, data: T): void => {
   } catch {}
 };
 
-const initialClients = loadStorage<EmailClient[]>("leadwise_email_clients", DEFAULT_CLIENTS);
+const initialClients = loadStorage<GmailAccount[]>("leadwise_gmail_accounts", DEFAULT_GMAIL_ACCOUNTS);
 const initialTemplates = loadStorage<EmailTemplate[]>("leadwise_email_templates", DEFAULT_TEMPLATES);
 const initialLogs = loadStorage<SentEmailLog[]>("leadwise_email_logs", [
   {
@@ -183,9 +165,9 @@ const initialLogs = loadStorage<SentEmailLog[]>("leadwise_email_logs", [
     leadId: "lead-sample-1",
     leadName: "Acme Corp",
     leadEmail: "contact@acme.com",
-    clientId: "client-default-1",
+    clientId: "gmail-default-1",
     clientEmail: "sales@yourcompany.com",
-    clientName: "Primary Sales",
+    clientName: "Primary Gmail",
     subject: "Introductory Meeting & Platform Demo",
     body: "Hi Acme team, thanks for connecting with us today. Looking forward to our discussion!",
     status: "opened",
@@ -209,10 +191,13 @@ const emailClientsSlice = createSlice({
   name: "emailClients",
   initialState,
   reducers: {
-    addEmailClient: (state, action: PayloadAction<Omit<EmailClient, "id" | "createdAt">>) => {
-      const newClient: EmailClient = {
+    addEmailClient: (state, action: PayloadAction<Omit<GmailAccount, "id" | "createdAt" | "smtpHost" | "smtpPort" | "smtpSecure">>) => {
+      const newClient: GmailAccount = {
         ...action.payload,
-        id: `client-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        smtpHost: "smtp.gmail.com",
+        smtpPort: 465,
+        smtpSecure: true,
+        id: `gmail-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         createdAt: new Date().toISOString(),
       };
 
@@ -225,10 +210,10 @@ const emailClientsSlice = createSlice({
       }
 
       state.clients.push(newClient);
-      saveStorage("leadwise_email_clients", state.clients);
+      saveStorage("leadwise_gmail_accounts", state.clients);
     },
 
-    updateEmailClient: (state, action: PayloadAction<EmailClient>) => {
+    updateEmailClient: (state, action: PayloadAction<GmailAccount>) => {
       const index = state.clients.findIndex((c) => c.id === action.payload.id);
       if (index !== -1) {
         if (action.payload.isDefault) {
@@ -236,8 +221,13 @@ const emailClientsSlice = createSlice({
             c.isDefault = false;
           });
         }
-        state.clients[index] = action.payload;
-        saveStorage("leadwise_email_clients", state.clients);
+        state.clients[index] = {
+          ...action.payload,
+          smtpHost: "smtp.gmail.com",
+          smtpPort: 465,
+          smtpSecure: true,
+        };
+        saveStorage("leadwise_gmail_accounts", state.clients);
       }
     },
 
@@ -247,7 +237,7 @@ const emailClientsSlice = createSlice({
         const nextDefault = state.clients.find((c) => c.isDefault) || state.clients[0];
         state.selectedClientId = nextDefault ? nextDefault.id : null;
       }
-      saveStorage("leadwise_email_clients", state.clients);
+      saveStorage("leadwise_gmail_accounts", state.clients);
     },
 
     setDefaultClient: (state, action: PayloadAction<string>) => {
@@ -255,7 +245,7 @@ const emailClientsSlice = createSlice({
         c.isDefault = c.id === action.payload;
       });
       state.selectedClientId = action.payload;
-      saveStorage("leadwise_email_clients", state.clients);
+      saveStorage("leadwise_gmail_accounts", state.clients);
     },
 
     setSelectedClientId: (state, action: PayloadAction<string | null>) => {

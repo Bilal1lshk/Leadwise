@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
 ,     "proxy.js", "app/dashboard/leads/create/page.jsx", "app/dashboard/leads/create/CreateNewlead.jsx", "app/dashboard/leads/[id]/page.jsx"  ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", ".next"]
 }
