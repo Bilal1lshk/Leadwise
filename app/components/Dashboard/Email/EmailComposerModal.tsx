@@ -124,8 +124,7 @@ export default function EmailComposerModal() {
         html,
         text: body,
       });
-
-      if (!data.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to send email.");
       }
 

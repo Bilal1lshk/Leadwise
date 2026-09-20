@@ -36,7 +36,6 @@ function isValidEmail(value: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  console.log("request hitted")
   let body: SendEmailPayload;
 
   try {
@@ -119,8 +118,6 @@ export async function POST(req: NextRequest) {
       rejected: info.rejected,
     });
   } catch (err: any) {
-    console.error("SMTP send error:", err);
-
     // Surface common Gmail auth failure clearly
     const message =
       err?.responseCode === 535

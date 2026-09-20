@@ -50,7 +50,6 @@ export async function POST(request: NextRequest) {
     try {
       await sendPasswordResetEmail(normalizedEmail, resetCode);
     } catch (mailError) {
-      console.error("Failed to send password reset email:", mailError);
       return NextResponse.json(
         {
           success: false,
@@ -68,8 +67,6 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Forgot password error:", error);
-
     const isDbConfigError =
       error instanceof Error && error.message.includes("Missing MongoDB connection string");
 
