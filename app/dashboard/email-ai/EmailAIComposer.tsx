@@ -19,25 +19,60 @@ import {
   Target,
   ListChecks,
   Clock,
-  RefreshCw,
   Trash2,
   Bold,
+  Building2,
+  Tag,
+  PersonStanding,
+  Banknote,
+  StickyNote,
 } from "lucide-react";
 
-type Tone = "Professional" | "Friendly" | "Persuasive" | "Formal" | "Casual" | "Enthusiastic";
-
-type Length = "Short" | "Medium" | "Detailed";
-
-interface AIGenerateResponse {
-  success: boolean;
-  response: string;
+interface ToneOption {
+  label: string;
+  value: string;
 }
 
-const TONES: Tone[] = ["Professional", "Friendly", "Persuasive", "Formal", "Casual", "Enthusiastic"];
+const TONES: ToneOption[] = [
+  { label: "Professional", value: "professional but warm" },
+  { label: "Friendly", value: "friendly" },
+  { label: "Persuasive", value: "persuasive" },
+  { label: "Formal", value: "formal" },
+  { label: "Casual", value: "casual" },
+  { label: "Enthusiastic", value: "enthusiastic" },
+];
 
-const LENGTHS: Length[] = ["Short", "Medium", "Detailed"];
+const STATUS_OPTIONS = ["", "new", "contacted", "qualified", "proposal", "won", "lost"];
 
-const AI_ENDPOINT = "https://chatbot-livid-gamma-59.vercel.app/ai/chat";
+const SOURCE_OPTIONS = ["", "website", "referral", "ad", "cold_call", "other"];
+
+const LEAD_STATUSES: Record<string, string> = {
+  new: "New",
+  contacted: "Contacted",
+  qualified: "Qualified",
+  proposal: "Proposal",
+  won: "Won",
+  lost: "Lost",
+};
+
+const LEAD_SOURCES: Record<string, string> = {
+  website: "Website",
+  referral: "Referral",
+  ad: "Ad",
+  cold_call: "Cold Call",
+  other: "Other",
+};
+
+interface GenerateResponse {
+  success?: boolean;
+  subject?: string;
+  body?: string;
+  response?: string;
+  error?: string;
+  detail?: string;
+}
+
+const API_ENDPOINT = "/api/Email/AIGenerate";
 
 const inputClass =
   "w-full rounded-xl border border-[#E5CB90] bg-[#FAFAF7] px-3.5 py-2.5 text-sm text-[#22303A] outline-none focus:border-[#458393] focus:bg-white placeholder:text-[#9A9A8F] transition-colors";
@@ -49,7 +84,10 @@ const parseAIResult = (raw: string): { subject: string; body: string } => {
 
   if (subjectMatch) {
     const subject = subjectMatch[1].trim();
-    const body = bodyStart >= 0 ? cleaned.slice(bodyStart).replace(/^(BODY|MESSAGE):/i, "").trim() : cleaned;
+    const body =
+      bodyStart >= 0
+        ? cleaned.slice(bodyStart).replace(/^(BODY|MESSAGE):/i, "").trim()
+        : cleaned;
     return { subject, body };
   }
 
@@ -64,22 +102,43 @@ const parseAIResult = (raw: string): { subject: string; body: string } => {
   return { subject: "", body: cleaned };
 };
 
+const extractGenerated = (
+  data: GenerateResponse
+): { subject: string; body: string } => {
+  if (typeof data.subject === "string" && typeof data.body === "string") {
+    return { subject: data.subject, body: data.body };
+  }
+
+  if (typeof data.response === "string" && data.response.trim()) {
+    return parseAIResult(data.response);
+  }
+
+  throw new Error("The AI service returned an empty response.");
+};
+
 export default function EmailAIComposer() {
   const searchParams = useSearchParams();
 
   const initialTo = searchParams.get("to") || "";
-  const initialSubject = searchParams.get("subject") || "";
   const initialBody = searchParams.get("body") || "";
+  const initialSender = searchParams.get("sender") || "";
+  const initialValue = searchParams.get("value") || "";
   const leadsParam = searchParams.get("leads") || "";
 
   const [to, setTo] = useState(initialTo);
+  const [leadName, setLeadName] = useState("");
+  const [senderName, setSenderName] = useState(initialSender);
+  const [company, setCompany] = useState("");
+  const [status, setStatus] = useState("");
+  const [source, setSource] = useState("");
+  const [estimatedValue, setEstimatedValue] = useState(initialValue);
+  const [notes, setNotes] = useState("");
   const [goal, setGoal] = useState(initialBody);
+  const [tone, setTone] = useState<string>("professional but warm");
   const [keyPoints, setKeyPoints] = useState("");
-  const [tone, setTone] = useState<Tone>("Professional");
-  const [length, setLength] = useState<Length>("Medium");
-  const [recipientName, setRecipientName] = useState("");
+  const [lengthHint, setLengthHint] = useState("concise, medium");
 
-  const [subject, setSubject] = useState(initialSubject);
+  const [subject, setSubject] = useState("");
   const [generatedBody, setGeneratedBody] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,53 +152,77 @@ export default function EmailAIComposer() {
       });
       if (leadList.length > 0) {
         setTo(leadList.map((lead) => lead.email).filter(Boolean).join(", "));
-        if (leadList.length === 1 && !recipientName) {
-          setRecipientName(leadList[0].name);
+        if (leadList.length === 1 && !leadName) {
+          setLeadName(leadList[0].name);
         }
       }
     }
-  }, [leadsParam, recipientName]);
+  }, [leadsParam, leadName]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!to.trim() && !goal.trim()) {
-      setError("Add at least a recipient or describe what the email should be about.");
+    const leadEmail = to.split(",").map((v) => v.trim()).filter(Boolean)[0] || "";
+    const resolvedName = leadName.trim() || leadEmail.split("@")[0] || "Lead";
+
+    if (!leadEmail) {
+      setError("Add the lead's email address.");
+      return;
+    }
+
+    if (!goal.trim()) {
+      setError("Describe what the email should be about.");
       return;
     }
 
     setIsGenerating(true);
 
-    const prompt = [
-      "You are a professional email writer for a sales team. Write the email described below.",
-      `Recipient${recipientName.trim() ? ` (${recipientName.trim()})` : ""}: ${to.trim() || "a lead"}`,
-      `Purpose / what the email is about: ${goal.trim() || "Follow up on our recent discussion and propose a next step."}`,
-      keyPoints.trim() ? `Key points that MUST be included: ${keyPoints.trim()}` : "",
-      `Tone: ${tone}.`, 
-      `Length: ${length}.`,
-      "Return the email using EXACTLY this format:",
-      "SUBJECT: <a concise subject line>",
-      "BODY:",
-      "<the full email body>",
+    const extraInstructions = [
+      keyPoints.trim() ? `Key points to include:\n${keyPoints.trim()}` : "",
+      lengthHint.trim() ? `Expected length: ${lengthHint.trim()}` : "",
     ]
       .filter(Boolean)
       .join("\n");
 
-    try {
-      const { data } = await axios.post<AIGenerateResponse>(AI_ENDPOINT, {
-        message: prompt,
-      });
+    const payload = {
+      lead_name: resolvedName,
+      lead_email: leadEmail,
+      company: company.trim() || null,
+      status: status.trim() || null,
+      source: source.trim() || null,
+      estimated_value:
+        estimatedValue.trim() !== "" &&
+        !Number.isNaN(Number(estimatedValue))
+          ? Number(estimatedValue)
+          : null,
+      notes: notes.trim() || null,
+      goal: goal.trim(),
+      tone: tone.trim() || "professional but warm",
+      sender_name: senderName.trim() || null,
+      extra_instructions: extraInstructions.trim() || null,
+    };
 
-      if (!data.success || !data.response) {
-        throw new Error("The AI service returned an empty response.");
+    try {
+      const { data } = await axios.post<GenerateResponse>(API_ENDPOINT, payload);
+
+      if (data.error) {
+        throw new Error(data.detail || data.error);
       }
 
-      const parsed = parseAIResult(data.response);
+      const parsed = extractGenerated(data);
       setSubject(parsed.subject);
       setGeneratedBody(parsed.body);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      let message = "Something went wrong. Please try again.";
+      if (axios.isAxiosError(err)) {
+        message =
+          err.response?.data?.error ||
+          err.response?.data?.detail ||
+          "The AI service is unavailable. Please try again.";
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
       setError(message);
     } finally {
       setIsGenerating(false);
@@ -162,6 +245,8 @@ export default function EmailAIComposer() {
   const handleClear = () => {
     setGoal("");
     setKeyPoints("");
+    setNotes("");
+    setLengthHint("concise, medium");
     setSubject("");
     setGeneratedBody("");
     setError(null);
@@ -213,44 +298,166 @@ export default function EmailAIComposer() {
                 Define Your Email
               </h2>
 
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">
-                  Recipients
-                </label>
-                <input
-                  type="text"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  placeholder="lead@example.com"
-                  className={inputClass}
-                />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">
+                    Lead name <span className="text-[#C1523F]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={leadName}
+                    onChange={(e) => setLeadName(e.target.value)}
+                    placeholder="e.g. Sarah Mitchell"
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">
+                    Lead email <span className="text-[#C1523F]">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    placeholder="lead@example.com"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                    <Building2 size={12} className="text-[#458393]" />
+                    Company <span className="text-[#9A9A8F]">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                    <PersonStanding size={12} className="text-[#458393]" />
+                    Sender name <span className="text-[#9A9A8F]">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    placeholder="e.g. Alex Turner"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                    <Tag size={12} className="text-[#458393]" />
+                    Status <span className="text-[#9A9A8F]">(optional)</span>
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className={inputClass}
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s || "none"} value={s}>
+                        {s ? (LEAD_STATUSES[s] || s) : "Select status"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                    <Tag size={12} className="text-[#458393]" />
+                    Source <span className="text-[#9A9A8F]">(optional)</span>
+                  </label>
+                  <select
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    className={inputClass}
+                  >
+                    {SOURCE_OPTIONS.map((s) => (
+                      <option key={s || "none"} value={s}>
+                        {s ? (LEAD_SOURCES[s] || s) : "Select source"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">
-                  Recipient name <span className="text-[#9A9A8F]">(optional)</span>
+                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                  <Banknote size={12} className="text-[#458393]" />
+                  Estimated value <span className="text-[#9A9A8F]">(optional, USD)</span>
                 </label>
                 <input
-                  type="text"
-                  value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  placeholder="e.g. Sarah Mitchell"
+                  type="number"
+                  min={0}
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value)}
+                  placeholder="e.g. 25000"
                   className={inputClass}
                 />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
-                  <Target size={12} className="text-[#458393]" />
-                  What is the email about?
+                  <StickyNote size={12} className="text-[#458393]" />
+                  Context / notes <span className="text-[#9A9A8F]">(optional)</span>
                 </label>
                 <textarea
-                  rows={4}
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Met at the trade show, interested in the CRM"
+                  className={`${inputClass} resize-y`}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
+                  <Target size={12} className="text-[#458393]" />
+                  What is the email about? <span className="text-[#C1523F]">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
                   placeholder="e.g. Introduce LeadWise CRM, share our ROI stats, and ask for a 15-minute demo call"
                   className={`${inputClass} resize-y`}
                 />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">Tone</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TONES.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setTone(t.value)}
+                      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                        tone === t.value
+                          ? "border-[#458393] bg-[#458393] text-white"
+                          : "border-[#E5CB90] bg-[#FAFAF7] text-[#5C6D71] hover:bg-[#FFF3C8]/60"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -268,46 +475,17 @@ export default function EmailAIComposer() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#5C6D71]">Tone</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {TONES.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setTone(t)}
-                      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
-                        tone === t
-                          ? "border-[#458393] bg-[#458393] text-white"
-                          : "border-[#E5CB90] bg-[#FAFAF7] text-[#5C6D71] hover:bg-[#FFF3C8]/60"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <label className="mb-1.5 block text-xs font-medium text-[#5C6D71] flex items-center gap-1">
                   <Clock size={12} className="text-[#458393]" />
-                  Length
+                  Expected length <span className="text-[#9A9A8F]">(optional)</span>
                 </label>
-                <div className="flex gap-1.5">
-                  {LENGTHS.map((l) => (
-                    <button
-                      key={l}
-                      type="button"
-                      onClick={() => setLength(l)}
-                      className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
-                        length === l
-                          ? "border-[#458393] bg-[#458393] text-white"
-                          : "border-[#E5CB90] bg-[#FAFAF7] text-[#5C6D71] hover:bg-[#FFF3C8]/60"
-                      }`}
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  value={lengthHint}
+                  onChange={(e) => setLengthHint(e.target.value)}
+                  placeholder="e.g. short, concise; or 3-4 paragraphs"
+                  className={inputClass}
+                />
               </div>
 
               {error && (

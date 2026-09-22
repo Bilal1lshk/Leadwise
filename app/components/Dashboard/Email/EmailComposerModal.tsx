@@ -80,6 +80,10 @@ export default function EmailComposerModal() {
     if (to) params.set("to", to.trim());
     if (subject) params.set("subject", subject.trim());
     if (body) params.set("body", body.trim());
+    if (activeClient?.name) params.set("sender", activeClient.name);
+    if (composerLeads[0]?.estimatedValue != null) {
+      params.set("value", String(composerLeads[0].estimatedValue));
+    }
     if (composerLeads.length > 0) {
       params.set(
         "leads",
