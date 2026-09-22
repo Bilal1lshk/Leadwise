@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 import { motion } from "framer-motion";
+import { useAppDispatch } from "@/app/redux/hooks";
+import { openComposerWithDraft } from "@/app/redux/emailClients";
 import {
   Sparkles,
   ArrowLeft,
@@ -117,6 +119,8 @@ const extractGenerated = (
 };
 
 export default function EmailAIComposer() {
+  const dispatch = useAppDispatch();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const initialTo = searchParams.get("to") || "";
@@ -230,7 +234,51 @@ export default function EmailAIComposer() {
   };
 
   const handleApplyGenerated = () => {
-    window.location.href = `/dashboard/leads`;
+    const leadList = leadsParam
+      .split(",")
+      .map((entry) => {
+        const [name, email] = entry.split(":");
+        return { name: name || "Lead", email: email || "" };
+      })
+      .filter((lead) => lead.email)
+      .map((lead, index) => ({
+        id: `ai-lead-${Date.now()}-${index}`,
+        personId: lead.name,
+        email: lead.email,
+        estimatedValue:
+          estimatedValue.trim() !== "" &&
+          !Number.isNaN(Number(estimatedValue))
+            ? Number(estimatedValue)
+            : undefined,
+      }));
+
+    const fallbackLeads =
+      leadList.length > 0
+        ? leadList
+        : [
+            {
+              id: `ai-lead-${Date.now()}`,
+              personId: leadName.trim() || "Lead",
+              email: to.split(",").map((v) => v.trim()).filter(Boolean)[0] || "",
+              estimatedValue:
+                estimatedValue.trim() !== "" &&
+                !Number.isNaN(Number(estimatedValue))
+                  ? Number(estimatedValue)
+                  : undefined,
+            },
+          ];
+
+    dispatch(
+      openComposerWithDraft({
+        leads: fallbackLeads,
+        draft: {
+          subject,
+          body: generatedBody,
+        },
+      })
+    );
+
+    router.push("/dashboard/leads");
   };
 
   const copyText = async (text: string, target: "subject" | "body") => {
