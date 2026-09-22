@@ -29,7 +29,7 @@ import { addNotification } from "@/app/redux/notifications";
 export default function EmailComposerModal() {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const { isComposerOpen, composerLeads, clients, selectedClientId } = useAppSelector(
+  const { isComposerOpen, composerLeads, composerDraft, clients, selectedClientId } = useAppSelector(
     (state) => state.emailClients
   );
 
@@ -62,18 +62,19 @@ export default function EmailComposerModal() {
 
     setTo(composerLeads.map((lead) => lead.email).join(", "));
     setShowCcBcc(false);
-    setCc("");
-    setBcc("");
+    setCc(composerDraft?.cc || "");
+    setBcc(composerDraft?.bcc || "");
     setSubject(
-      composerLeads.length === 1
-        ? `Regarding sales opportunity with ${composerLeads[0].personId || "Lead"}`
-        : ""
+      composerDraft?.subject ??
+        (composerLeads.length === 1
+          ? `Regarding sales opportunity with ${composerLeads[0].personId || "Lead"}`
+          : "")
     );
-    setBody("");
+    setBody(composerDraft?.body || "");
     setAppendSignature(true);
     setSendError(null);
     setIsSending(false);
-  }, [isComposerOpen, composerLeads]);
+  }, [isComposerOpen, composerLeads, composerDraft]);
 
   const handleComposeWithAI = () => {
     const params = new URLSearchParams();

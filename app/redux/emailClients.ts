@@ -54,6 +54,13 @@ export interface ComposerLead {
   estimatedValue?: number;
 }
 
+export interface ComposerDraft {
+  subject?: string;
+  body?: string;
+  cc?: string;
+  bcc?: string;
+}
+
 interface EmailClientsState {
   clients: GmailAccount[];
   templates: EmailTemplate[];
@@ -62,6 +69,7 @@ interface EmailClientsState {
   isClientModalOpen: boolean;
   isComposerOpen: boolean;
   composerLeads: ComposerLead[];
+  composerDraft: ComposerDraft | null;
 }
 
 const DEFAULT_GMAIL_ACCOUNTS: GmailAccount[] = [
@@ -186,6 +194,7 @@ const initialState: EmailClientsState = {
   isClientModalOpen: false,
   isComposerOpen: false,
   composerLeads: [],
+  composerDraft: null,
 };
 
 const emailClientsSlice = createSlice({
@@ -266,9 +275,19 @@ const emailClientsSlice = createSlice({
       state.isComposerOpen = true;
     },
 
+    openComposerWithDraft: (
+      state,
+      action: PayloadAction<{ leads: ComposerLead[]; draft?: ComposerDraft }>
+    ) => {
+      state.composerLeads = action.payload.leads;
+      state.composerDraft = action.payload.draft || null;
+      state.isComposerOpen = true;
+    },
+
     closeComposer: (state) => {
       state.isComposerOpen = false;
       state.composerLeads = [];
+      state.composerDraft = null;
     },
 
     saveTemplate: (state, action: PayloadAction<Omit<EmailTemplate, "id">>) => {
@@ -309,6 +328,7 @@ export const {
   openClientModal,
   closeClientModal,
   openComposer,
+  openComposerWithDraft,
   closeComposer,
   saveTemplate,
   deleteTemplate,
