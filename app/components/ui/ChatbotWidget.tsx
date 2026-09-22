@@ -43,7 +43,7 @@ export default function ChatbotWidget() {
 
         try {
             const response = await axios.post<AIResponse>(
-                "https://chatbot-livid-gamma-59.vercel.app/ai/chat",
+                "/api/AI/Chat",
                 {
                     message: trimmed,
                 }

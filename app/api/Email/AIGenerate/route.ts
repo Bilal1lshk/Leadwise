@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AI_EMAIL_ENDPOINT =
-  process.env.AI_EMAIL_ENDPOINT || "https://chatbot-livid-gamma-59.vercel.app/ai/email";
+const AI_BASE_URL = process.env.AI_BASE_URL || "https://chatbot-livid-gamma-59.vercel.app";
+const AI_EMAIL_ENDPOINT = process.env.AI_EMAIL_ENDPOINT || `${AI_BASE_URL}/ai/email`;
 
 interface AIEmailPayload {
   lead_name: string;
