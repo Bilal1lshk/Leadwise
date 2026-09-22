@@ -14,6 +14,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  SquarePen,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/app/redux/hooks";
 import {
@@ -71,6 +72,25 @@ export default function EmailComposerModal() {
     setSendError(null);
     setIsSending(false);
   }, [isComposerOpen, composerLeads]);
+
+  const buildMailtoLink = () => {
+    const params = new URLSearchParams();
+    if (subject) params.set("subject", subject);
+    if (cc) params.set("cc", cc);
+    if (bcc) params.set("bcc", bcc);
+    const bodyText =
+      appendSignature && activeClient?.signature
+        ? `${body}\n\n${activeClient.signature}`
+        : body;
+    params.set("body", bodyText);
+    const query = params.toString();
+    return `mailto:${to}${query ? `?${query}` : ""}`;
+  };
+
+  const handleOpenExternalComposer = () => {
+    window.location.href = buildMailtoLink();
+    dispatch(closeComposer());
+  };
 
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -334,7 +354,7 @@ export default function EmailComposerModal() {
 
           <div className="bg-white p-3.5 rounded-2xl border border-[#E5CB90]/70">
             <label className="block text-xs font-semibold text-[#22303A] mb-1">
-              Subject Line <span className="text-red-500">*</span>
+              Subject Line 
             </label>
             <input
               type="text"
@@ -348,7 +368,7 @@ export default function EmailComposerModal() {
 
           <div className="rounded-2xl border border-[#E5CB90] bg-white overflow-hidden shadow-sm">
             <label className="block text-xs font-semibold text-[#22303A] px-4 pt-3.5 pb-1">
-              Message <span className="text-red-500">*</span>
+              Message 
             </label>
             <textarea
               rows={8}
@@ -388,7 +408,17 @@ export default function EmailComposerModal() {
               Discard Draft
             </button>
 
-            <button
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenExternalComposer}
+                title="Open draft in your email app"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#458393]/30 bg-white px-4 py-2 text-xs font-semibold text-[#458393] hover:bg-[#458393]/10 transition active:scale-95"
+              >
+                <SquarePen size={13} />
+                Compose in Email App
+              </button>
+              <button
               type="submit"
               disabled={isSending || !to.trim()}
               className="inline-flex items-center gap-2 rounded-xl bg-[#458393] px-6 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#346a78] transition active:scale-95 disabled:opacity-50"
@@ -406,6 +436,7 @@ export default function EmailComposerModal() {
                 </>
               )}
             </button>
+            </div>
           </div>
         </form>
       </motion.div>
