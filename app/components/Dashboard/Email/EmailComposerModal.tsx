@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   X,
   Send,
@@ -14,7 +15,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  SquarePen,
+  Sparkles,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/app/redux/hooks";
 import {
@@ -27,6 +28,7 @@ import { addNotification } from "@/app/redux/notifications";
 
 export default function EmailComposerModal() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const { isComposerOpen, composerLeads, clients, selectedClientId } = useAppSelector(
     (state) => state.emailClients
   );
@@ -73,23 +75,19 @@ export default function EmailComposerModal() {
     setIsSending(false);
   }, [isComposerOpen, composerLeads]);
 
-  const buildMailtoLink = () => {
+  const handleComposeWithAI = () => {
     const params = new URLSearchParams();
-    if (subject) params.set("subject", subject);
-    if (cc) params.set("cc", cc);
-    if (bcc) params.set("bcc", bcc);
-    const bodyText =
-      appendSignature && activeClient?.signature
-        ? `${body}\n\n${activeClient.signature}`
-        : body;
-    params.set("body", bodyText);
-    const query = params.toString();
-    return `mailto:${to}${query ? `?${query}` : ""}`;
-  };
-
-  const handleOpenExternalComposer = () => {
-    window.location.href = buildMailtoLink();
+    if (to) params.set("to", to.trim());
+    if (subject) params.set("subject", subject.trim());
+    if (body) params.set("body", body.trim());
+    if (composerLeads.length > 0) {
+      params.set(
+        "leads",
+        composerLeads.map((l) => `${l.personId}:${l.email}`).join(",")
+      );
+    }
     dispatch(closeComposer());
+    router.push(`/dashboard/email-ai${params.toString() ? `?${params.toString()}` : ""}`);
   };
 
   const handleSendEmail = async (e: React.FormEvent) => {
@@ -411,12 +409,12 @@ export default function EmailComposerModal() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleOpenExternalComposer}
-                title="Open draft in your email app"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[#458393]/30 bg-white px-4 py-2 text-xs font-semibold text-[#458393] hover:bg-[#458393]/10 transition active:scale-95"
+                onClick={handleComposeWithAI}
+                title="Use AI to draft this email"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#C9A24A]/40 bg-[#FFF8E0] px-4 py-2 text-xs font-semibold text-[#7A5B1A] hover:bg-[#FFF3C8] transition active:scale-95"
               >
-                <SquarePen size={13} />
-                Compose in Email App
+                <Sparkles size={13} />
+                Compose with AI
               </button>
               <button
               type="submit"
